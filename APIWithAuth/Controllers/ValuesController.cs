@@ -1,4 +1,5 @@
-﻿using APIWithAuth.Models;
+﻿using APIWithAuth.DataContext;
+using APIWithAuth.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -13,24 +14,33 @@ namespace APIWithAuth.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize/*(AuthenticationSchemes = AuthSchemes)*/]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     public class ValuesController : ControllerBase
     {
         //private const string AuthSchemes = JwtBearerDefaults.AuthenticationScheme;
         private readonly UserManager<User> userManager;
         private readonly SignInManager<User> signInManager;
+        private readonly ApplicationContext applicationContext;
 
-        public ValuesController(UserManager<User> userManager, SignInManager<User> signInManager)
+        public ValuesController(UserManager<User> userManager, SignInManager<User> signInManager, ApplicationContext applicationContext)
         {
             this.userManager = userManager;
             this.signInManager = signInManager;
+            this.applicationContext = applicationContext;
+        }
+
+        [HttpGet("getFruit")]
+        [AllowAnonymous]
+        public IEnumerable<string> Getfruit()
+        {
+            return new string[] { "Peach" };
         }
 
 
         [HttpGet("getFruits")]
         public IEnumerable<string> Getfruits()
         {
-            return new string[] { "value1", "value2" };
+            return new string[] { "Apple", "Banana" };
         }
 
 
@@ -44,39 +54,44 @@ namespace APIWithAuth.Controllers
 
             if (result.Succeeded)
             {
+               
                 return Ok(new { Result = "Register Success" });
             }
-            else
-            {
-
-                return BadRequest(result.Errors);
+            
+            return BadRequest(result.Errors);
                 
-            }
+            
         }
 
 
         //TODO 
         [HttpPost("Login")]
         [AllowAnonymous]
-        public ActionResult Login([FromBody] RegisterModel user)
+        public async Task<ActionResult> Login([FromBody] RegisterModel model)
         {
+            var user = applicationContext.Users.FirstOrDefault(x => x.Email == model.Email);
+
+
             if (user == null)
             {
-                throw new ArgumentNullException("user");
+                return NotFound();
 
             }
             else
-            { 
-                //if user is registed then return a JWT token
-                if (user.Email == "123@gmail.com" && user.Password == "123456")
+            {
+                var signInResult = await signInManager.CheckPasswordSignInAsync(user, model.Password,false);
+                if(signInResult.Succeeded)
                 {
+                    
+
+                    //if user is registed then return a JWT token
                     var tokenHandler = new JwtSecurityTokenHandler();
                     var key = Encoding.ASCII.GetBytes("My_secret_key_HAHAHAHAHHAHAHAHAHAHAHA");
                     var tokenDescriptor = new SecurityTokenDescriptor
                     {
                         Subject = new ClaimsIdentity(new Claim[]
                         {
-                            new Claim(ClaimTypes.Name, user.Email)
+                            new Claim(ClaimTypes.Name, model.Email)
                         }),
                         Expires = DateTime.UtcNow.AddDays(1),
                         SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256)
@@ -84,15 +99,18 @@ namespace APIWithAuth.Controllers
 
                     var token = tokenHandler.CreateToken(tokenDescriptor);
                     var tokenstring = tokenHandler.WriteToken(token);
-
+                    
                     return Ok(new { Token = tokenstring });
+
+
+                }
+                else
+                {
+                    return Ok("Try again");
                 }
 
-
             }
-
-            return NotFound();
-
+         
         }
 
 
